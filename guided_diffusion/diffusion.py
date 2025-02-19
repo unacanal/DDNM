@@ -210,14 +210,16 @@ class Diffusion(object):
             
     def simplified_ddnm_plus(self, model, cls_fn):
         args, config = self.args, self.config
-
+        
         dataset, test_dataset = get_dataset(args, config)
-
-        device_count = torch.cuda.device_count()
-
+        
+        # ImageFolder의 samples 속성에서 파일 경로 가져오기
+        input_files = [os.path.basename(path) for path, _ in test_dataset.dataset.samples]
+        
         if args.subset_start >= 0 and args.subset_end > 0:
             assert args.subset_end > args.subset_start
             test_dataset = torch.utils.data.Subset(test_dataset, range(args.subset_start, args.subset_end))
+            input_files = input_files[args.subset_start:args.subset_end]
         else:
             args.subset_start = 0
             args.subset_end = len(test_dataset)
@@ -234,7 +236,7 @@ class Diffusion(object):
         val_loader = data.DataLoader(
             test_dataset,
             batch_size=config.sampling.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=config.data.num_workers,
             worker_init_fn=seed_worker,
             generator=g,
@@ -299,7 +301,7 @@ class Diffusion(object):
         idx_so_far = args.subset_start
         avg_psnr = 0.0
         pbar = tqdm.tqdm(val_loader)
-        for x_orig, classes in pbar:
+        for i, (x_orig, classes) in enumerate(pbar):
             x_orig = x_orig.to(self.device)
             x_orig = data_transform(self.config, x_orig)
 
@@ -310,17 +312,23 @@ class Diffusion(object):
 
             Apy = Ap(y)
 
+            # 현재 처리중인 파일명
+            current_file = input_files[i]
+            base_name = os.path.splitext(current_file)[0]  # 확장자 제외한 파일명
+
             os.makedirs(os.path.join(self.args.image_folder, "Apy"), exist_ok=True)
-            for i in range(len(Apy)):
+            for j in range(len(Apy)):
+                # Apy 저장
                 tvu.save_image(
-                    inverse_data_transform(config, Apy[i]),
-                    os.path.join(self.args.image_folder, f"Apy/Apy_{idx_so_far + i}.png")
+                    inverse_data_transform(config, Apy[j]),
+                    os.path.join(self.args.image_folder, "Apy", f"{base_name}_Apy.png")
                 )
+                # orig 저장
                 tvu.save_image(
-                    inverse_data_transform(config, x_orig[i]),
-                    os.path.join(self.args.image_folder, f"Apy/orig_{idx_so_far + i}.png")
+                    inverse_data_transform(config, x_orig[j]),
+                    os.path.join(self.args.image_folder, "Apy", f"{base_name}_orig.png")
                 )
-                
+
             # init x_T
             x = torch.randn(
                 y.shape[0],
@@ -398,9 +406,12 @@ class Diffusion(object):
                 
             x = [inverse_data_transform(config, xi) for xi in x]
 
+            # 최종 결과 저장
             tvu.save_image(
-                x[0], os.path.join(self.args.image_folder, f"{idx_so_far + j}_{0}.png")
+                x[0], 
+                os.path.join(self.args.image_folder, f"{base_name}_restored.png")
             )
+
             orig = inverse_data_transform(config, x_orig[0])
             mse = torch.mean((x[0].to(self.device) - orig) ** 2)
             psnr = 10 * torch.log10(1 / mse)
@@ -423,9 +434,13 @@ class Diffusion(object):
 
         device_count = torch.cuda.device_count()
 
+        # ImageFolder의 samples 속성에서 파일 경로 가져오기
+        input_files = [os.path.basename(path) for path, _ in test_dataset.dataset.samples]
+        
         if args.subset_start >= 0 and args.subset_end > 0:
             assert args.subset_end > args.subset_start
             test_dataset = torch.utils.data.Subset(test_dataset, range(args.subset_start, args.subset_end))
+            input_files = input_files[args.subset_start:args.subset_end]
         else:
             args.subset_start = 0
             args.subset_end = len(test_dataset)
@@ -442,7 +457,7 @@ class Diffusion(object):
         val_loader = data.DataLoader(
             test_dataset,
             batch_size=config.sampling.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=config.data.num_workers,
             worker_init_fn=seed_worker,
             generator=g,
@@ -529,7 +544,7 @@ class Diffusion(object):
         idx_so_far = args.subset_start
         avg_psnr = 0.0
         pbar = tqdm.tqdm(val_loader)
-        for x_orig, classes in pbar:
+        for i, (x_orig, classes) in enumerate(pbar):
             x_orig = x_orig.to(self.device)
             x_orig = data_transform(self.config, x_orig)
 
@@ -563,15 +578,20 @@ class Diffusion(object):
             elif deg == 'inpainting':
                 Apy += A_funcs.A_pinv(A_funcs.A(torch.ones_like(Apy))).reshape(*Apy.shape) - 1
 
+            # 현재 처리중인 파일명
+            current_file = input_files[i]
+            base_name = os.path.splitext(current_file)[0]  # 확장자 제외한 파일명
             os.makedirs(os.path.join(self.args.image_folder, "Apy"), exist_ok=True)
-            for i in range(len(Apy)):
+            for j in range(len(Apy)):
+                # Apy 저장
                 tvu.save_image(
-                    inverse_data_transform(config, Apy[i]),
-                    os.path.join(self.args.image_folder, f"Apy/Apy_{idx_so_far + i}.png")
+                    inverse_data_transform(config, Apy[j]),
+                    os.path.join(self.args.image_folder, "Apy", f"{base_name}_Apy.png")
                 )
+                # orig 저장
                 tvu.save_image(
-                    inverse_data_transform(config, x_orig[i]),
-                    os.path.join(self.args.image_folder, f"Apy/orig_{idx_so_far + i}.png")
+                    inverse_data_transform(config, x_orig[j]),
+                    os.path.join(self.args.image_folder, "Apy", f"{base_name}_orig.png")
                 )
 
             #Start DDIM
@@ -593,8 +613,12 @@ class Diffusion(object):
 
 
             for j in range(x[0].size(0)):
+                # tvu.save_image(
+                #     x[0][j], os.path.join(self.args.image_folder, f"{idx_so_far + j}_{0}.png")
+                # )
                 tvu.save_image(
-                    x[0][j], os.path.join(self.args.image_folder, f"{idx_so_far + j}_{0}.png")
+                    x[0][j], 
+                    os.path.join(self.args.image_folder, f"{base_name}_{j}_restored.png")
                 )
                 orig = inverse_data_transform(config, x_orig[j])
                 mse = torch.mean((x[0][j].to(self.device) - orig) ** 2)
